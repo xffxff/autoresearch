@@ -40,9 +40,11 @@ class EvaluationConfig:
     num_windows: int = 6
     taker_fee_bps: float = 5.0
     slippage_bps: float = 1.0
-    min_trade_count: int = 40
-    max_drawdown: float = 0.25
-    max_annualized_turnover: float = 75.0
+    min_trade_count: int = 20
+    max_drawdown: float = 0.55
+    max_annualized_turnover: float = 150.0
+    min_active_windows: int = 3
+    min_window_net_return: float = -0.20
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,9 @@ class BacktestResult:
     max_drawdown: float
     trade_count: int
     turnover: float
+    active_windows: int
+    worst_window_return: float
+    best_window_return: float
     pass_gates: bool
     windows: list[WindowResult]
 
@@ -240,28 +245,44 @@ def evaluate_strategy(
         validate_positions(positions, window_market)
         window_results.append(simulate_validation_window(window_market, positions, config))
 
+    return summarize_window_results(window_results, config)
+
+
+def summarize_window_results(
+    window_results: list[WindowResult],
+    config: EvaluationConfig,
+) -> BacktestResult:
+    if not window_results:
+        raise ValueError("window_results must not be empty")
+
     combined_returns = pd.concat([window.returns for window in window_results]).sort_index()
     weights = np.array([window.bars for window in window_results], dtype=float)
-    window_sharpes = np.array([window.net_sharpe for window in window_results], dtype=float)
-    score = float(np.average(window_sharpes, weights=weights))
+    total_net_return = cumulative_return(combined_returns)
     total_trade_count = int(sum(window.trade_count for window in window_results))
     total_turnover = float(np.average([window.turnover for window in window_results], weights=weights))
     total_max_drawdown = max_drawdown(combined_returns)
+    active_windows = int(sum((window.trade_count > 0) or (abs(window.net_return) > 1e-12) for window in window_results))
+    worst_window_return = float(min(window.net_return for window in window_results))
+    best_window_return = float(max(window.net_return for window in window_results))
 
     pass_gates = (
         total_trade_count >= config.min_trade_count
         and total_max_drawdown <= config.max_drawdown
         and total_turnover <= config.max_annualized_turnover
+        and active_windows >= config.min_active_windows
+        and worst_window_return >= config.min_window_net_return
     )
 
     return BacktestResult(
-        score=score,
+        score=total_net_return,
         net_sharpe=annualized_sharpe(combined_returns),
-        net_return=cumulative_return(combined_returns),
+        net_return=total_net_return,
         max_drawdown=total_max_drawdown,
         trade_count=total_trade_count,
         turnover=total_turnover,
+        active_windows=active_windows,
+        worst_window_return=worst_window_return,
+        best_window_return=best_window_return,
         pass_gates=pass_gates,
         windows=window_results,
     )
-

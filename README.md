@@ -34,8 +34,13 @@ The default evaluation uses:
 - `1h` bars
 - 6 walk-forward windows
 - 365 day calibration + 90 day validation per window
-- score = weighted average validation `net_sharpe`
-- hard gates on trade count, max drawdown, and annualized turnover
+- score = combined validation `net_return`
+- survival gates:
+  - `trade_count >= 20`
+  - `max_drawdown <= 55%`
+  - `annualized_turnover <= 150`
+  - `active_windows >= 3`
+  - `worst_window_return >= -20%`
 
 Implementation note: Binance public `fundingRate` is available from monthly archives, not daily archives. When a trailing funding archive has not been published yet, the dataset builder zero-fills those missing rows.
 

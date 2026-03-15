@@ -4,7 +4,7 @@ This repository is for autonomous research on `BTCUSDT` USD-M perpetual strategi
 
 ## Setup
 
-1. Create a fresh branch named `autoresearch/<YYYYMMDD>-btc-um`.
+1. Create a fresh branch named `codex/autoresearch/<YYYYMMDD>-btc-um`.
 2. Read the in-scope files:
    - `README.md`
    - `program.md`
@@ -49,7 +49,14 @@ The backtest engine is fixed:
 - position range is `[-1, 1]`
 - costs are `5 bps` taker fee + `1 bp` slippage per side
 - funding is applied from Binance archive `fundingRate`
-- score is walk-forward weighted `net_sharpe`
+- score is combined validation `net_return`
+- `net_sharpe` is reported for diagnosis only
+- hard gates are:
+  - `trade_count >= 20`
+  - `max_drawdown <= 55%`
+  - `annualized_turnover <= 150`
+  - `active_windows >= 3`
+  - `worst_window_return >= -20%`
 
 ## Loop
 
@@ -67,7 +74,7 @@ uv run run_experiment.py --results-file results.tsv --description "<short idea>"
 5. Extract the summary:
 
 ```bash
-grep "^score:\|^net_sharpe:\|^max_drawdown:\|^pass_gates:\|^status:" run.log
+grep "^score:\|^net_sharpe:\|^max_drawdown:\|^active_windows:\|^worst_window_return:\|^pass_gates:\|^status:" run.log
 ```
 
 6. If the run crashed, inspect the tail:
@@ -84,8 +91,9 @@ tail -n 80 run.log
 `results.tsv` is tab-separated with columns:
 
 ```text
-commit	score	net_sharpe	net_return	max_drawdown	trade_count	turnover	pass_gates	status	description
+commit	score	net_sharpe	net_return	max_drawdown	trade_count	turnover	active_windows	worst_window_return	pass_gates	status	description
 ```
 
-Crash rows should be appended manually only when the run fails before `run_experiment.py` can write a result.
+Legacy `results.tsv` files are migrated by `run_experiment.py` so that `score` reflects `net_return` before a new run compares against the incumbent.
 
+Crash rows should be appended manually only when the run fails before `run_experiment.py` can write a result.

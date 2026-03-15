@@ -24,6 +24,8 @@ RESULTS_HEADER = [
     "max_drawdown",
     "trade_count",
     "turnover",
+    "active_windows",
+    "worst_window_return",
     "pass_gates",
     "status",
     "description",
@@ -56,12 +58,21 @@ def get_git_commit() -> str:
 
 
 def ensure_results_header(path: Path) -> None:
-    if path.exists():
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t")
+            writer.writerow(RESULTS_HEADER)
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\t")
-        writer.writerow(RESULTS_HEADER)
+
+    frame = pd.read_csv(path, sep="\t")
+    for column in RESULTS_HEADER:
+        if column not in frame.columns:
+            frame[column] = ""
+    if "net_return" in frame.columns:
+        frame["score"] = frame["net_return"]
+    frame = frame.reindex(columns=RESULTS_HEADER)
+    frame.to_csv(path, sep="\t", index=False)
 
 
 def read_best_score(path: Path) -> float | None:
@@ -100,6 +111,8 @@ def append_result_row(
         "max_drawdown": f"{result.max_drawdown:.6f}",
         "trade_count": str(result.trade_count),
         "turnover": f"{result.turnover:.6f}",
+        "active_windows": str(result.active_windows),
+        "worst_window_return": f"{result.worst_window_return:.6f}",
         "pass_gates": "true" if result.pass_gates else "false",
         "status": status,
         "description": description,
@@ -118,6 +131,9 @@ def save_artifacts(artifacts_dir: Path, result: BacktestResult, config: Evaluati
         "max_drawdown": result.max_drawdown,
         "trade_count": result.trade_count,
         "turnover": result.turnover,
+        "active_windows": result.active_windows,
+        "worst_window_return": result.worst_window_return,
+        "best_window_return": result.best_window_return,
         "pass_gates": result.pass_gates,
         "config": asdict(config),
         "windows": [
@@ -149,6 +165,8 @@ def render_summary(result: BacktestResult, status: str | None = None) -> str:
         f"max_drawdown:   {result.max_drawdown:.6f}",
         f"trade_count:    {result.trade_count}",
         f"turnover:       {result.turnover:.6f}",
+        f"active_windows: {result.active_windows}",
+        f"worst_window_return: {result.worst_window_return:.6f}",
         f"pass_gates:     {'true' if result.pass_gates else 'false'}",
         f"num_windows:    {len(result.windows)}",
     ]
@@ -172,6 +190,7 @@ def run_once(
 
     status: str | None = None
     if results_file is not None:
+        ensure_results_header(results_file)
         current_commit = commit or get_git_commit()
         effective_incumbent = incumbent_score if incumbent_score is not None else read_best_score(results_file)
         status = determine_status(result, effective_incumbent)
@@ -195,4 +214,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

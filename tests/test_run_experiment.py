@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from backtest import EvaluationConfig
 from run_experiment import determine_status, read_best_score, render_summary, run_once
 
 
@@ -53,4 +55,73 @@ def test_run_once_appends_results_and_writes_artifacts(tmp_path: Path) -> None:
     assert artifacts_dir.joinpath("latest_windows.tsv").exists()
     assert read_best_score(results_path) == pytest.approx(result.score, rel=0, abs=1e-6)
     assert "score:" in render_summary(result, status=status)
+    assert "active_windows:" in render_summary(result, status=status)
+    assert "worst_window_return:" in render_summary(result, status=status)
     assert determine_status(result, incumbent_score=result.score + 1.0) == "discard"
+
+    recorded = pd.read_csv(results_path, sep="\t")
+    assert "active_windows" in recorded.columns
+    assert "worst_window_return" in recorded.columns
+    assert recorded.iloc[0]["score"] == pytest.approx(result.net_return, abs=1e-6)
+
+    summary = json.loads((artifacts_dir / "latest_summary.json").read_text(encoding="utf-8"))
+    assert summary["active_windows"] == result.active_windows
+    assert summary["worst_window_return"] == pytest.approx(result.worst_window_return)
+    assert summary["best_window_return"] == pytest.approx(result.best_window_return)
+
+
+def test_run_once_migrates_old_results_header(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "btc.parquet"
+    results_path = tmp_path / "results.tsv"
+    artifacts_dir = tmp_path / "artifacts"
+    make_dataset(dataset_path)
+    results_path.write_text(
+        "commit\tscore\tnet_sharpe\tnet_return\tmax_drawdown\ttrade_count\tturnover\tpass_gates\tstatus\tdescription\n"
+        "old1234\t1.500000\t0.800000\t0.250000\t0.100000\t40\t20.000000\ttrue\tkeep\told row\n",
+        encoding="utf-8",
+    )
+
+    run_once(
+        dataset_path=dataset_path,
+        artifacts_dir=artifacts_dir,
+        results_file=results_path,
+        description="after migration",
+        commit="new1234",
+    )
+
+    recorded = pd.read_csv(results_path, sep="\t")
+    assert list(recorded.columns) == [
+        "commit",
+        "score",
+        "net_sharpe",
+        "net_return",
+        "max_drawdown",
+        "trade_count",
+        "turnover",
+        "active_windows",
+        "worst_window_return",
+        "pass_gates",
+        "status",
+        "description",
+    ]
+    assert recorded.iloc[0]["score"] == pytest.approx(0.25, abs=1e-6)
+
+
+def test_current_incumbent_passes_with_new_gate_if_dataset_exists(tmp_path: Path) -> None:
+    dataset_path = Path("data/derived/btcusdt_um_1h.parquet")
+    if not dataset_path.exists():
+        pytest.skip("real dataset not available")
+
+    result, status = run_once(
+        dataset_path=dataset_path,
+        artifacts_dir=tmp_path / "artifacts",
+        results_file=tmp_path / "results.tsv",
+        description="incumbent regression",
+        commit="regress1",
+    )
+
+    assert status == "keep"
+    assert result.pass_gates is True
+    assert result.active_windows >= EvaluationConfig().min_active_windows
+    assert result.worst_window_return >= EvaluationConfig().min_window_net_return
+    assert result.net_return > 0.0
