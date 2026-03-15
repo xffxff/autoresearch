@@ -38,14 +38,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         )
 
         if slow_trend_ready or breakout_reentry:
-            target = 0.25
-            if row["trend_regime"] >= 0.016:
-                target = 0.45
-            if row["trend_regime"] >= 0.026:
-                target = 0.70
-            if row["trend_regime"] >= 0.038 and row["basis"] < 0.0022:
-                target = 1.0
-
+            target = 1.0
             vol_target = min(1.0, max(0.35, 0.22 / max(row["volatility_14d"], 0.003)))
             target = min(target, vol_target)
         elif short_overlay_ready:
