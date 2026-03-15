@@ -71,6 +71,14 @@ def test_run_once_appends_results_and_writes_artifacts(tmp_path: Path) -> None:
     assert summary["active_windows"] == result.active_windows
     assert summary["worst_window_return"] == pytest.approx(result.worst_window_return)
     assert summary["best_window_return"] == pytest.approx(result.best_window_return)
+    assert "btc_buy_hold_return" in summary["windows"][0]
+    assert "excess_return_vs_btc" in summary["windows"][0]
+    assert "btc_max_drawdown" in summary["windows"][0]
+
+    windows = pd.read_csv(artifacts_dir / "latest_windows.tsv", sep="\t")
+    assert "btc_buy_hold_return" in windows.columns
+    assert "excess_return_vs_btc" in windows.columns
+    assert "btc_max_drawdown" in windows.columns
 
 
 def test_run_once_migrates_old_results_header(tmp_path: Path) -> None:
