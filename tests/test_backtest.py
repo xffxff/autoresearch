@@ -98,6 +98,8 @@ def test_simulate_validation_window_applies_lag_costs_and_funding() -> None:
     )
     assert result.trade_count == 1
     assert result.net_return == pytest.approx(0.09)
+    assert result.benchmark_net_return == pytest.approx(0.21)
+    assert result.benchmark_max_drawdown == pytest.approx(0.0)
 
 
 def test_make_walk_forward_windows_builds_six_sequential_windows() -> None:

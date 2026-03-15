@@ -173,7 +173,10 @@ def save_artifacts(artifacts_dir: Path, result: BacktestResult, config: Evaluati
             "validation_end": result.holdout.validation_end.isoformat(),
             "net_sharpe": result.holdout.net_sharpe,
             "net_return": result.holdout.net_return,
+            "btc_buy_hold_return": result.holdout.benchmark_net_return,
+            "excess_return_vs_btc": result.holdout.net_return - result.holdout.benchmark_net_return,
             "max_drawdown": result.holdout.max_drawdown,
+            "btc_max_drawdown": result.holdout.benchmark_max_drawdown,
             "trade_count": result.holdout.trade_count,
             "turnover": result.holdout.turnover,
             "bars": result.holdout.bars,
@@ -201,8 +204,11 @@ def render_summary(result: BacktestResult, status: str | None = None) -> str:
         lines.extend(
             [
                 f"holdout_net_return: {result.holdout.net_return:.6f}",
+                f"holdout_btc_return: {result.holdout.benchmark_net_return:.6f}",
+                f"holdout_excess_return_vs_btc: {result.holdout.net_return - result.holdout.benchmark_net_return:.6f}",
                 f"holdout_net_sharpe: {result.holdout.net_sharpe:.6f}",
                 f"holdout_max_drawdown: {result.holdout.max_drawdown:.6f}",
+                f"holdout_btc_max_drawdown: {result.holdout.benchmark_max_drawdown:.6f}",
                 f"holdout_trade_count: {result.holdout.trade_count}",
             ]
         )

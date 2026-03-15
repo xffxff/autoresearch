@@ -67,6 +67,8 @@ class WindowResult:
     turnover: float
     bars: int
     returns: pd.Series
+    benchmark_net_return: float = 0.0
+    benchmark_max_drawdown: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -225,6 +227,7 @@ def simulate_validation_window(
         raise ValueError("validation slice is empty after applying the execution lag")
 
     returns = validation["net_return_component"]
+    benchmark_returns = validation["next_open_return"]
     trade_count = int((validation["delta_position"] > 1e-12).sum())
     turnover = float(validation["delta_position"].sum() * HOURS_PER_YEAR / len(validation))
 
@@ -239,6 +242,8 @@ def simulate_validation_window(
         turnover=turnover,
         bars=len(validation),
         returns=returns,
+        benchmark_net_return=cumulative_return(benchmark_returns),
+        benchmark_max_drawdown=max_drawdown(benchmark_returns),
     )
 
 

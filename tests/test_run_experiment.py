@@ -151,9 +151,15 @@ def test_run_once_can_include_holdout_summary(tmp_path: Path) -> None:
     assert result.holdout is not None
     summary_text = render_summary(result)
     assert "holdout_net_return:" in summary_text
+    assert "holdout_btc_return:" in summary_text
+    assert "holdout_excess_return_vs_btc:" in summary_text
+    assert "holdout_btc_max_drawdown:" in summary_text
     assert "holdout_trade_count:" in summary_text
     summary = json.loads((artifacts_dir / "latest_summary.json").read_text(encoding="utf-8"))
     assert "holdout" in summary
+    assert "btc_buy_hold_return" in summary["holdout"]
+    assert "excess_return_vs_btc" in summary["holdout"]
+    assert "btc_max_drawdown" in summary["holdout"]
 
 
 def test_current_incumbent_passes_with_new_gate_if_dataset_exists(tmp_path: Path) -> None:
