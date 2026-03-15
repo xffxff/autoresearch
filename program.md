@@ -51,6 +51,7 @@ The backtest engine is fixed:
 - funding is applied from Binance archive `fundingRate`
 - score is combined research-window `net_return`
 - `net_sharpe` is reported for diagnosis only
+- the evaluator uses `8` research walk-forward windows
 - the latest 90 days are reserved as a final holdout window
 - the holdout must not be used in the normal keep/discard loop
 - hard gates are:
@@ -108,6 +109,12 @@ Run:
 ```bash
 uv run run_experiment.py --run-holdout --description "<short idea>" > run.log 2>&1
 ```
+
+The holdout summary also reports BTC-relative context:
+
+- `holdout_btc_return`
+- `holdout_excess_return_vs_btc`
+- `holdout_btc_max_drawdown`
 
 Do not compare candidates by holdout during routine iteration.
 
