@@ -27,7 +27,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             row["breakout_20d"] > -0.01
             and row["trend_slope"] > -0.003
             and row["funding_latest"] < 0.00055
-            and row["trend_regime_7d"] > 0.0
+            and row["trend_regime_7d"] > 0.007
         )
         short_overlay_ready = (
             row["trend_regime"] <= -0.03
@@ -44,12 +44,13 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         elif short_overlay_ready:
             target = -0.20
             if row["trend_regime_7d"] > -0.03:
-                target = -0.08
-            elif row["trend_regime"] <= -0.07 or row["breakout_20d"] <= -0.12:
+                target = 0.0
+            elif row["trend_regime"] <= -0.07 or row["breakout_20d"] <= -0.10:
                 target = -0.25
 
             vol_target = min(0.7, max(0.15, 0.18 / max(row["volatility_14d"], 0.003)))
-            target = -min(abs(target), vol_target)
+            if target < 0.0:
+                target = -min(abs(target), vol_target)
 
         if (
             row["trend_regime"] < 0.006
