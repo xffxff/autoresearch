@@ -12,6 +12,7 @@ from backtest import (
     cumulative_return,
     evaluate_strategy,
     max_drawdown,
+    make_holdout_window,
     make_walk_forward_windows,
     simulate_validation_window,
     summarize_window_results,
@@ -100,7 +101,7 @@ def test_simulate_validation_window_applies_lag_costs_and_funding() -> None:
 
 
 def test_make_walk_forward_windows_builds_six_sequential_windows() -> None:
-    frame = make_market_frame(length=24 * 950)
+    frame = make_market_frame(length=24 * 1_200)
     windows = make_walk_forward_windows(frame.index, EvaluationConfig())
 
     assert len(windows) == 6
@@ -108,8 +109,19 @@ def test_make_walk_forward_windows_builds_six_sequential_windows() -> None:
     assert windows[1].validation_start - windows[0].validation_start == pd.Timedelta(days=90)
 
 
+def test_make_holdout_window_reserves_final_ninety_days() -> None:
+    frame = make_market_frame(length=24 * 1_200)
+    config = EvaluationConfig()
+    windows = make_walk_forward_windows(frame.index, config)
+    holdout = make_holdout_window(frame.index, config)
+
+    assert holdout is not None
+    assert holdout.validation_start == windows[-1].validation_end
+    assert holdout.validation_end - holdout.validation_start == pd.Timedelta(days=config.holdout_days)
+
+
 def test_evaluate_strategy_rejects_nan_features() -> None:
-    frame = make_market_frame(length=24 * 950)
+    frame = make_market_frame(length=24 * 1_200)
     market = MarketBundle(frame=frame)
 
     def bad_features(window_market: MarketBundle) -> pd.DataFrame:

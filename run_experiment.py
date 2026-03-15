@@ -16,8 +16,10 @@ from strategy import generate_position
 
 DEFAULT_DATASET = Path("data/derived/btcusdt_um_1h.parquet")
 DEFAULT_ARTIFACTS = Path("artifacts")
+RESULTS_SCHEME = "research_holdout_v1"
 RESULTS_HEADER = [
     "commit",
+    "scheme",
     "score",
     "net_sharpe",
     "net_return",
@@ -37,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-path", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--artifacts-dir", type=Path, default=DEFAULT_ARTIFACTS)
     parser.add_argument("--results-file", type=Path, help="Append the result to a TSV file.")
+    parser.add_argument(
+        "--run-holdout",
+        action="store_true",
+        help="Evaluate the reserved final holdout window and include it in the summary/artifacts.",
+    )
     parser.add_argument("--description", default="manual")
     parser.add_argument("--commit", help="Override the commit hash written to results.tsv.")
     parser.add_argument("--incumbent-score", type=float, help="Override the score threshold used for keep/discard.")
@@ -75,13 +82,18 @@ def ensure_results_header(path: Path) -> None:
     frame.to_csv(path, sep="\t", index=False)
 
 
-def read_best_score(path: Path) -> float | None:
+def read_best_score(path: Path, scheme: str) -> float | None:
     if not path.exists():
         return None
     frame = pd.read_csv(path, sep="\t")
     if frame.empty:
         return None
+    if "scheme" not in frame.columns:
+        return None
     kept = frame[frame["status"] == "keep"]
+    if kept.empty:
+        return None
+    kept = kept[kept["scheme"] == scheme]
     if kept.empty:
         return None
     return float(kept["score"].max())
@@ -100,11 +112,13 @@ def append_result_row(
     result: BacktestResult,
     description: str,
     commit: str,
+    scheme: str,
     status: str,
 ) -> None:
     ensure_results_header(path)
     row = {
         "commit": commit,
+        "scheme": scheme,
         "score": f"{result.score:.6f}",
         "net_sharpe": f"{result.net_sharpe:.6f}",
         "net_return": f"{result.net_return:.6f}",
@@ -125,6 +139,7 @@ def append_result_row(
 def save_artifacts(artifacts_dir: Path, result: BacktestResult, config: EvaluationConfig) -> None:
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     summary_payload = {
+        "scheme": RESULTS_SCHEME,
         "score": result.score,
         "net_sharpe": result.net_sharpe,
         "net_return": result.net_return,
@@ -151,6 +166,18 @@ def save_artifacts(artifacts_dir: Path, result: BacktestResult, config: Evaluati
             for window in result.windows
         ],
     }
+    if result.holdout is not None:
+        summary_payload["holdout"] = {
+            "calibration_start": result.holdout.calibration_start.isoformat(),
+            "validation_start": result.holdout.validation_start.isoformat(),
+            "validation_end": result.holdout.validation_end.isoformat(),
+            "net_sharpe": result.holdout.net_sharpe,
+            "net_return": result.holdout.net_return,
+            "max_drawdown": result.holdout.max_drawdown,
+            "trade_count": result.holdout.trade_count,
+            "turnover": result.holdout.turnover,
+            "bars": result.holdout.bars,
+        }
     (artifacts_dir / "latest_summary.json").write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
     window_frame = pd.DataFrame(summary_payload["windows"])
     window_frame.to_csv(artifacts_dir / "latest_windows.tsv", sep="\t", index=False)
@@ -170,6 +197,15 @@ def render_summary(result: BacktestResult, status: str | None = None) -> str:
         f"pass_gates:     {'true' if result.pass_gates else 'false'}",
         f"num_windows:    {len(result.windows)}",
     ]
+    if result.holdout is not None:
+        lines.extend(
+            [
+                f"holdout_net_return: {result.holdout.net_return:.6f}",
+                f"holdout_net_sharpe: {result.holdout.net_sharpe:.6f}",
+                f"holdout_max_drawdown: {result.holdout.max_drawdown:.6f}",
+                f"holdout_trade_count: {result.holdout.trade_count}",
+            ]
+        )
     if status is not None:
         lines.append(f"status:         {status}")
     return "\n".join(lines)
@@ -182,19 +218,35 @@ def run_once(
     description: str = "manual",
     commit: str | None = None,
     incumbent_score: float | None = None,
+    run_holdout: bool = False,
 ) -> tuple[BacktestResult, str | None]:
     market = load_market_bundle(dataset_path)
     config = EvaluationConfig()
-    result = evaluate_strategy(market, build_features, generate_position, config=config)
+    result = evaluate_strategy(
+        market,
+        build_features,
+        generate_position,
+        config=config,
+        include_holdout=run_holdout,
+    )
     save_artifacts(artifacts_dir, result, config)
 
     status: str | None = None
     if results_file is not None:
         ensure_results_header(results_file)
         current_commit = commit or get_git_commit()
-        effective_incumbent = incumbent_score if incumbent_score is not None else read_best_score(results_file)
+        effective_incumbent = (
+            incumbent_score if incumbent_score is not None else read_best_score(results_file, RESULTS_SCHEME)
+        )
         status = determine_status(result, effective_incumbent)
-        append_result_row(results_file, result, description=description, commit=current_commit, status=status)
+        append_result_row(
+            results_file,
+            result,
+            description=description,
+            commit=current_commit,
+            scheme=RESULTS_SCHEME,
+            status=status,
+        )
     return result, status
 
 
@@ -207,6 +259,7 @@ def main() -> int:
         description=args.description,
         commit=args.commit,
         incumbent_score=args.incumbent_score,
+        run_holdout=args.run_holdout,
     )
     print(render_summary(result, status=status))
     return 0

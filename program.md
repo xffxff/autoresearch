@@ -36,7 +36,7 @@ You must not modify:
 
 ## Goal
 
-Maximize the printed `score`, subject to:
+Maximize the printed research-window `score`, subject to:
 
 - `pass_gates: true`
 - higher score is better
@@ -49,8 +49,10 @@ The backtest engine is fixed:
 - position range is `[-1, 1]`
 - costs are `5 bps` taker fee + `1 bp` slippage per side
 - funding is applied from Binance archive `fundingRate`
-- score is combined validation `net_return`
+- score is combined research-window `net_return`
 - `net_sharpe` is reported for diagnosis only
+- the latest 90 days are reserved as a final holdout window
+- the holdout must not be used in the normal keep/discard loop
 - hard gates are:
   - `trade_count >= 20`
   - `max_drawdown <= 55%`
@@ -86,14 +88,26 @@ tail -n 80 run.log
 7. If `status: keep`, keep the commit and continue from it.
 8. If `status: discard`, reset to the previous kept commit and try another idea.
 
+## Holdout
+
+Use the final holdout only when you intentionally want a final untouched check for the current branch head.
+
+Run:
+
+```bash
+uv run run_experiment.py --run-holdout --description "<short idea>" > run.log 2>&1
+```
+
+Do not compare candidates by holdout during routine iteration.
+
 ## Results file
 
 `results.tsv` is tab-separated with columns:
 
 ```text
-commit	score	net_sharpe	net_return	max_drawdown	trade_count	turnover	active_windows	worst_window_return	pass_gates	status	description
+commit	scheme	score	net_sharpe	net_return	max_drawdown	trade_count	turnover	active_windows	worst_window_return	pass_gates	status	description
 ```
 
-Legacy `results.tsv` files are migrated by `run_experiment.py` so that `score` reflects `net_return` before a new run compares against the incumbent.
+Legacy `results.tsv` files are migrated by `run_experiment.py`. Incumbent comparison only happens within the current evaluation `scheme`, so old rows from an earlier evaluator definition are left for audit but are not used as the benchmark.
 
 Crash rows should be appended manually only when the run fails before `run_experiment.py` can write a result.

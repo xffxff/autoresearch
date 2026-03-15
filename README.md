@@ -18,7 +18,7 @@ The repo is intentionally small and keeps a hard boundary between fixed infrastr
 - `strategy.py` is edited by the agent.
 - `program.md` is edited by the human and acts as the lightweight research operating manual.
 
-By design, the data and evaluator are fixed. The score is the combined validation `net_return`, and a candidate is only kept if it also passes the survival gates:
+By design, the data and evaluator are fixed. The score is the combined research-window `net_return`, and a candidate is only kept if it also passes the survival gates:
 
 - `trade_count >= 20`
 - `max_drawdown <= 55%`
@@ -26,12 +26,15 @@ By design, the data and evaluator are fixed. The score is the combined validatio
 - `active_windows >= 3`
 - `worst_window_return >= -20%`
 
+The evaluator also reserves a final 90-day holdout window after the research windows. That holdout is not shown during the normal keep/discard loop unless you explicitly ask for it.
+
 The default research target is:
 
 - `BTCUSDT` USD-M perpetual
 - `1h` bars
-- 6 walk-forward windows
-- 365 day calibration + 90 day validation per window
+- 6 research walk-forward windows
+- 1 final 90 day holdout window
+- 365 day calibration + 90 day validation per research window
 - next-bar-open execution
 - `5 bps` taker fee + `1 bp` slippage per side
 - Binance archived funding applied as holding cost/carry
@@ -52,6 +55,9 @@ uv run build_dataset.py
 
 # 4. Run one experiment
 uv run run_experiment.py --results-file results.tsv --description baseline
+
+# 5. When you want a final untouched check, reveal the holdout once
+uv run run_experiment.py --run-holdout --description final-check
 ```
 
 If those commands work, the setup is ready for autonomous research.
@@ -64,7 +70,7 @@ Open your coding agent in this repository and point it at `program.md`. A typica
 Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
 ```
 
-The agent should read `program.md`, inspect the latest `results.tsv`, make one focused idea in `features.py` or `strategy.py`, run the fixed experiment command, and keep or discard based on the reported `status`.
+The agent should read `program.md`, inspect the latest `results.tsv`, make one focused idea in `features.py` or `strategy.py`, run the fixed research experiment command, and keep or discard based on the reported `status`. It should only reveal the final holdout window intentionally, not every iteration.
 
 ## Project structure
 
@@ -77,8 +83,8 @@ features.py        feature engineering surface (agent modifies this)
 strategy.py        position logic surface (agent modifies this)
 program.md         human instructions for the agent
 pyproject.toml     dependencies
-results.tsv        experiment log
-artifacts/         latest summary JSON + per-window breakdown
+results.tsv        research experiment log
+artifacts/         latest summary JSON + research-window breakdown (+ optional holdout)
 ```
 
 ## Design choices
@@ -86,6 +92,7 @@ artifacts/         latest summary JSON + per-window breakdown
 - **Fixed evaluator.** Agents are not allowed to game the benchmark by changing the backtest engine, data source, or scoring pipeline.
 - **Small editable surface.** Research happens in `features.py` and `strategy.py`, which keeps diffs readable and the search space manageable.
 - **Walk-forward validation.** Every experiment is scored on sequential out-of-sample windows instead of a single in-sample period.
+- **Reserved holdout.** The latest 90 days are held back from the research score and can be revealed separately for a final sanity check.
 - **Execution realism.** Signals are computed on bar close and executed on the next bar open, with costs and funding applied.
 - **Keep/discard loop.** Each run appends to `results.tsv`, which makes the research trajectory auditable and easy to resume.
 

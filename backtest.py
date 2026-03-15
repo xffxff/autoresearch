@@ -38,6 +38,7 @@ class EvaluationConfig:
     calibration_days: int = 365
     validation_days: int = 90
     num_windows: int = 6
+    holdout_days: int = 90
     taker_fee_bps: float = 5.0
     slippage_bps: float = 1.0
     min_trade_count: int = 20
@@ -81,6 +82,7 @@ class BacktestResult:
     best_window_return: float
     pass_gates: bool
     windows: list[WindowResult]
+    holdout: WindowResult | None = None
 
 
 def validate_market_frame(frame: pd.DataFrame) -> None:
@@ -97,17 +99,26 @@ def validate_market_frame(frame: pd.DataFrame) -> None:
         raise ValueError("market frame index must not contain duplicates")
 
 
-def make_walk_forward_windows(index: pd.DatetimeIndex, config: EvaluationConfig) -> list[WindowSpec]:
+def _analysis_end_and_base_start(
+    index: pd.DatetimeIndex,
+    config: EvaluationConfig,
+) -> tuple[pd.Timestamp, pd.Timestamp]:
     if len(index) < 2:
         raise ValueError("dataset is too small for evaluation")
     analysis_end = index.max() + pd.Timedelta(hours=1)
-    total_days = config.calibration_days + config.validation_days * config.num_windows
+    total_days = config.calibration_days + config.validation_days * config.num_windows + config.holdout_days
     base_start = analysis_end - pd.Timedelta(days=total_days)
     if index.min() > base_start:
         raise ValueError(
-            f"dataset does not contain enough history for {config.num_windows} windows "
-            f"of {config.calibration_days}+{config.validation_days} days"
+            f"dataset does not contain enough history for {config.num_windows} research windows "
+            f"of {config.calibration_days}+{config.validation_days} days plus "
+            f"{config.holdout_days} holdout days"
         )
+    return analysis_end, base_start
+
+
+def make_walk_forward_windows(index: pd.DatetimeIndex, config: EvaluationConfig) -> list[WindowSpec]:
+    _, base_start = _analysis_end_and_base_start(index, config)
 
     windows: list[WindowSpec] = []
     for step in range(config.num_windows):
@@ -122,6 +133,20 @@ def make_walk_forward_windows(index: pd.DatetimeIndex, config: EvaluationConfig)
             )
         )
     return windows
+
+
+def make_holdout_window(index: pd.DatetimeIndex, config: EvaluationConfig) -> WindowSpec | None:
+    if config.holdout_days <= 0:
+        return None
+    _, base_start = _analysis_end_and_base_start(index, config)
+    calibration_start = base_start + pd.Timedelta(days=config.validation_days * config.num_windows)
+    validation_start = calibration_start + pd.Timedelta(days=config.calibration_days)
+    validation_end = validation_start + pd.Timedelta(days=config.holdout_days)
+    return WindowSpec(
+        calibration_start=calibration_start,
+        validation_start=validation_start,
+        validation_end=validation_end,
+    )
 
 
 def validate_features(features: pd.DataFrame, market: MarketBundle) -> None:
@@ -222,6 +247,8 @@ def evaluate_strategy(
     feature_builder: Callable[[MarketBundle], pd.DataFrame],
     strategy_builder: Callable[[pd.DataFrame, MarketBundle], pd.Series],
     config: EvaluationConfig | None = None,
+    *,
+    include_holdout: bool = False,
 ) -> BacktestResult:
     config = config or EvaluationConfig()
     validate_market_frame(market.frame)
@@ -245,12 +272,35 @@ def evaluate_strategy(
         validate_positions(positions, window_market)
         window_results.append(simulate_validation_window(window_market, positions, config))
 
-    return summarize_window_results(window_results, config)
+    holdout_result: WindowResult | None = None
+    holdout_spec = make_holdout_window(market.frame.index, config) if include_holdout else None
+    if holdout_spec is not None:
+        holdout_frame = market.frame.loc[
+            (market.frame.index >= holdout_spec.calibration_start)
+            & (market.frame.index < holdout_spec.validation_end)
+        ].copy()
+        holdout_market = MarketBundle(
+            frame=holdout_frame,
+            symbol=market.symbol,
+            bar_interval=market.bar_interval,
+            calibration_start=holdout_spec.calibration_start,
+            calibration_end=holdout_spec.validation_start,
+            validation_start=holdout_spec.validation_start,
+            validation_end=holdout_spec.validation_end,
+        )
+        holdout_features = feature_builder(holdout_market)
+        validate_features(holdout_features, holdout_market)
+        holdout_positions = strategy_builder(holdout_features, holdout_market)
+        validate_positions(holdout_positions, holdout_market)
+        holdout_result = simulate_validation_window(holdout_market, holdout_positions, config)
+
+    return summarize_window_results(window_results, config, holdout_result=holdout_result)
 
 
 def summarize_window_results(
     window_results: list[WindowResult],
     config: EvaluationConfig,
+    holdout_result: WindowResult | None = None,
 ) -> BacktestResult:
     if not window_results:
         raise ValueError("window_results must not be empty")
@@ -285,4 +335,5 @@ def summarize_window_results(
         best_window_return=best_window_return,
         pass_gates=pass_gates,
         windows=window_results,
+        holdout=holdout_result,
     )
