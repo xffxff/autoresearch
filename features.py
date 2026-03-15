@@ -18,6 +18,9 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
     funding_latest = frame["funding_rate"].replace(0.0, np.nan).ffill().fillna(0.0)
     basis = (frame["mark_close"] / frame["index_close"] - 1.0).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     premium_7d = frame["premium_close"].rolling(24 * 7, min_periods=24).mean().fillna(0.0)
+    breakout_20d = (
+        close / close.rolling(24 * 20, min_periods=24 * 5).max() - 1.0
+    ).replace([np.inf, -np.inf], 0.0).fillna(-1.0)
 
     features = pd.DataFrame(
         {
@@ -28,6 +31,7 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
             "funding_latest": funding_latest,
             "basis": basis,
             "premium_7d": premium_7d,
+            "breakout_20d": breakout_20d,
         },
         index=frame.index,
     )

@@ -17,7 +17,19 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         hours_since_rebalance += 1
         target = 0.0
 
-        if row["trend_regime"] >= 0.012 and row["trend_slope"] > -0.004 and row["funding_latest"] < 0.0005:
+        slow_trend_ready = (
+            row["trend_regime"] >= 0.012
+            and row["trend_slope"] > -0.004
+            and row["funding_latest"] < 0.0005
+            and row["premium_7d"] >= -0.0001
+        )
+        breakout_reentry = (
+            row["breakout_20d"] > -0.01
+            and row["trend_slope"] > -0.002
+            and row["funding_latest"] < 0.00045
+        )
+
+        if slow_trend_ready or breakout_reentry:
             target = 0.2
             if row["trend_regime"] >= 0.018:
                 target = 0.4
