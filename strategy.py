@@ -8,7 +8,7 @@ from backtest import MarketBundle
 
 def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series:
     positions: list[float] = []
-    cooldown_hours = 72
+    cooldown_hours = 73
     state = 0.0
     hours_since_change = cooldown_hours
     hours_since_rebalance = cooldown_hours
