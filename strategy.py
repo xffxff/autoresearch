@@ -18,7 +18,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         target = 0.0
 
         slow_trend_ready = (
-            row["trend_regime"] >= 0.01
+            row["trend_regime"] >= 0.009
             and row["trend_slope"] > -0.005
             and row["funding_latest"] < 0.00065
             and row["premium_7d"] >= -0.00015
