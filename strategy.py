@@ -42,8 +42,8 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             target = min(target, vol_target)
 
         if (
-            row["trend_regime"] < 0.003
-            or row["trend_slope"] < -0.016
+            row["trend_regime"] < 0.004
+            or row["trend_slope"] < -0.014
             or row["funding_latest"] > 0.0009
         ):
             target = 0.0
