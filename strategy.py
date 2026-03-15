@@ -7,23 +7,49 @@ from backtest import MarketBundle
 
 
 def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series:
-    momentum_signal = np.tanh(features["normalized_momentum"] / 8.0)
-    trend_signal = np.tanh(features["trend_strength"] * 40.0)
-    raw_signal = 0.7 * momentum_signal + 0.3 * trend_signal
+    positions: list[float] = []
+    state = 0.0
+    hours_since_change = 24
+    hours_since_rebalance = 24
 
-    volatility_scale = 1.0 / (1.0 + features["volatility_72h"] * 60.0)
-    scaled_signal = raw_signal * volatility_scale
+    for _, row in features.iterrows():
+        hours_since_change += 1
+        hours_since_rebalance += 1
+        target = 0.0
 
-    positive_funding = features["funding_latest"].clip(lower=0.0)
-    negative_funding = (-features["funding_latest"].clip(upper=0.0))
+        if row["trend_regime"] >= 0.012 and row["trend_slope"] > -0.004 and row["funding_latest"] < 0.0005:
+            target = 0.2
+            if row["trend_regime"] >= 0.018:
+                target = 0.4
+            if row["trend_regime"] >= 0.025:
+                target = 0.6
+            if row["trend_regime"] >= 0.04 and row["basis"] < 0.0015:
+                target = 0.8
 
-    long_penalty = np.clip(1.0 - positive_funding * 1200.0, 0.0, 1.0)
-    short_penalty = np.clip(1.0 - negative_funding * 1200.0, 0.0, 1.0)
+            vol_target = min(1.0, max(0.25, 0.16 / max(row["volatility_14d"], 0.003)))
+            target = min(target, vol_target)
 
-    adjusted = scaled_signal.copy()
-    adjusted = adjusted.where(adjusted <= 0.0, adjusted * long_penalty)
-    adjusted = adjusted.where(adjusted >= 0.0, adjusted * short_penalty)
+        if (
+            row["trend_regime"] < 0.006
+            or row["trend_slope"] < -0.012
+            or row["funding_latest"] > 0.0006
+        ):
+            target = 0.0
 
-    positions = adjusted.clip(-1.0, 1.0).fillna(0.0)
+        if state == 0.0:
+            if target > 0.0 and hours_since_change >= 24:
+                state = target
+                hours_since_change = 0
+                hours_since_rebalance = 0
+        else:
+            if target == 0.0 and hours_since_change >= 24:
+                state = 0.0
+                hours_since_change = 0
+                hours_since_rebalance = 0
+            elif target > 0.0 and abs(target - state) > 0.05 and hours_since_rebalance >= 24:
+                state = target
+                hours_since_rebalance = 0
+
+        positions.append(state)
+
     return pd.Series(positions, index=features.index, name="position")
-
