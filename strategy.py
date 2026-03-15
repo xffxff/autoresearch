@@ -8,9 +8,10 @@ from backtest import MarketBundle
 
 def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series:
     positions: list[float] = []
+    cooldown_hours = 72
     state = 0.0
-    hours_since_change = 24
-    hours_since_rebalance = 24
+    hours_since_change = cooldown_hours
+    hours_since_rebalance = cooldown_hours
 
     for _, row in features.iterrows():
         hours_since_change += 1
@@ -24,7 +25,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["premium_7d"] >= -0.00015
         )
         breakout_reentry = (
-            row["breakout_20d"] > -0.01
+            row["breakout_20d"] > -0.012
             and row["trend_slope"] > -0.003
             and row["funding_latest"] < 0.00055
             and row["trend_regime_7d"] > 0.007
@@ -68,20 +69,20 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
                 target = 0.0
 
         if state == 0.0:
-            if target != 0.0 and hours_since_change >= 24:
+            if target != 0.0 and hours_since_change >= cooldown_hours:
                 state = target
                 hours_since_change = 0
                 hours_since_rebalance = 0
         else:
-            if target == 0.0 and hours_since_change >= 24:
+            if target == 0.0 and hours_since_change >= cooldown_hours:
                 state = 0.0
                 hours_since_change = 0
                 hours_since_rebalance = 0
-            elif target != 0.0 and np.sign(target) != np.sign(state) and hours_since_change >= 24:
+            elif target != 0.0 and np.sign(target) != np.sign(state) and hours_since_change >= cooldown_hours:
                 state = target
                 hours_since_change = 0
                 hours_since_rebalance = 0
-            elif target != 0.0 and abs(target - state) > 0.05 and hours_since_rebalance >= 24:
+            elif target != 0.0 and abs(target - state) > 0.05 and hours_since_rebalance >= cooldown_hours:
                 state = target
                 hours_since_rebalance = 0
 
