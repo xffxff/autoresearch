@@ -102,11 +102,11 @@ def test_simulate_validation_window_applies_lag_costs_and_funding() -> None:
     assert result.benchmark_max_drawdown == pytest.approx(0.0)
 
 
-def test_make_walk_forward_windows_builds_six_sequential_windows() -> None:
+def test_make_walk_forward_windows_builds_eight_sequential_windows() -> None:
     frame = make_market_frame(length=24 * 1_200)
     windows = make_walk_forward_windows(frame.index, EvaluationConfig())
 
-    assert len(windows) == 6
+    assert len(windows) == 8
     assert windows[0].validation_start - windows[0].calibration_start == pd.Timedelta(days=365)
     assert windows[1].validation_start - windows[0].validation_start == pd.Timedelta(days=90)
 

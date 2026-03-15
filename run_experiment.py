@@ -16,7 +16,7 @@ from strategy import generate_position
 
 DEFAULT_DATASET = Path("data/derived/btcusdt_um_1h.parquet")
 DEFAULT_ARTIFACTS = Path("artifacts")
-RESULTS_SCHEME = "research_holdout_v1"
+RESULTS_SCHEME = "research_holdout_v2_8windows"
 RESULTS_HEADER = [
     "commit",
     "scheme",

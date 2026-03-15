@@ -37,7 +37,7 @@ class MarketBundle:
 class EvaluationConfig:
     calibration_days: int = 365
     validation_days: int = 90
-    num_windows: int = 6
+    num_windows: int = 8
     holdout_days: int = 90
     taker_fee_bps: float = 5.0
     slippage_bps: float = 1.0

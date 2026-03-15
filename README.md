@@ -32,7 +32,7 @@ The default research target is:
 
 - `BTCUSDT` USD-M perpetual
 - `1h` bars
-- 6 research walk-forward windows
+- 8 research walk-forward windows
 - 1 final 90 day holdout window
 - 365 day calibration + 90 day validation per research window
 - next-bar-open execution
