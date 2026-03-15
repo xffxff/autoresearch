@@ -60,6 +60,17 @@ The backtest engine is fixed:
   - `active_windows >= 3`
   - `worst_window_return >= -20%`
 
+## Anti-overfitting guardrails
+
+Treat repeated tuning on the same research windows as a real overfitting risk.
+
+- Do not chase tiny research-window `score` improvements with highly specific constants.
+- Treat exact values such as `73h` or `0.007` as suspicious unless there is a clear reason they should be better than nearby values.
+- Prefer simpler, rounder, and more natural nearby values when they behave similarly.
+- Prefer broad plateaus where neighboring parameter values also work, not sharp single-point peaks.
+- If a change only looks better on the current research windows and clearly depends on a narrow parameter combination, treat it as likely overfit.
+- The reserved holdout remains a final exam only and must not be used for routine parameter search.
+
 ## Loop
 
 Repeat forever:
@@ -85,7 +96,7 @@ grep "^score:\|^net_sharpe:\|^max_drawdown:\|^active_windows:\|^worst_window_ret
 tail -n 80 run.log
 ```
 
-7. If `status: keep`, keep the commit and continue from it.
+7. If `status: keep`, remember this only means the candidate passed the current evaluator. It does not prove the change is not overfit. Before keeping a threshold, cooldown, or sizing tweak, do a short verbal self-check: is the parameter overly precise, is there a simpler nearby value with the same behavior, and does the improvement look like a robust change instead of a narrow lucky peak. If it still looks reasonable, keep the commit and continue from it.
 8. If `status: discard`, reset to the previous kept commit and try another idea.
 
 ## Holdout
