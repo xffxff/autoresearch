@@ -50,10 +50,8 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             target = min(target, vol_target)
         elif short_overlay_ready:
             target = -0.20
-            if row["trend_regime"] <= -0.045:
-                target = -0.30
 
-            vol_target = min(0.7, max(0.2, 0.18 / max(row["volatility_14d"], 0.003)))
+            vol_target = min(0.7, max(0.15, 0.18 / max(row["volatility_14d"], 0.003)))
             target = -min(abs(target), vol_target)
 
         if (
