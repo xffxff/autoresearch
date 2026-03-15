@@ -37,6 +37,8 @@ The default evaluation uses:
 - score = weighted average validation `net_sharpe`
 - hard gates on trade count, max drawdown, and annualized turnover
 
+Implementation note: Binance public `fundingRate` is available from monthly archives, not daily archives. When a trailing funding archive has not been published yet, the dataset builder zero-fills those missing rows.
+
 ## Project layout
 
 - `download_data.py`: downloads monthly full files plus daily incremental files from Binance public archives and verifies checksums
@@ -52,4 +54,3 @@ The default evaluation uses:
 ```bash
 uv run pytest
 ```
-

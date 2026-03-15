@@ -78,10 +78,18 @@ def load_close_series(raw_root: Path, dataset: str, symbol: str, interval: str, 
     return frame["close"].rename(target_name)
 
 
-def load_funding_dataset(raw_root: Path, symbol: str) -> pd.DataFrame:
+def load_funding_dataset(raw_root: Path, symbol: str, reference_index: pd.DatetimeIndex | None = None) -> pd.DataFrame:
     frames = [read_binance_zip_csv(path, FUNDING_COLUMNS) for path in collect_zip_files(raw_root, "fundingRate", symbol, DEFAULT_INTERVAL)]
     if not frames:
-        raise FileNotFoundError("No raw files found for fundingRate.")
+        if reference_index is None:
+            raise FileNotFoundError("No raw files found for fundingRate.")
+        return pd.DataFrame(
+            {
+                "funding_interval_hours": 8,
+                "funding_rate": 0.0,
+            },
+            index=reference_index,
+        )
 
     combined = pd.concat(frames, ignore_index=True)
     combined["timestamp"] = pd.to_datetime(combined["calc_time"].astype("int64"), unit="ms", utc=True)
@@ -96,7 +104,7 @@ def build_market_frame(raw_root: Path, symbol: str = DEFAULT_SYMBOL, interval: s
     mark = load_close_series(raw_root, "markPriceKlines", symbol, interval, "mark_close")
     index_price = load_close_series(raw_root, "indexPriceKlines", symbol, interval, "index_close")
     premium = load_close_series(raw_root, "premiumIndexKlines", symbol, interval, "premium_close")
-    funding = load_funding_dataset(raw_root, symbol)
+    funding = load_funding_dataset(raw_root, symbol, reference_index=base.index)
 
     frame = base.join(mark, how="left").join(index_price, how="left").join(premium, how="left").join(funding, how="left")
     frame["mark_close"] = frame["mark_close"].ffill().fillna(frame["close"])
@@ -132,4 +140,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

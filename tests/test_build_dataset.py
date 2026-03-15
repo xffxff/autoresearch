@@ -93,3 +93,14 @@ def test_build_market_frame_deduplicates_and_aligns(tmp_path: Path) -> None:
     assert frame.iloc[2]["funding_rate"] == -0.0005
     assert frame.index.tz is not None
 
+
+def test_build_market_frame_zero_fills_when_funding_is_missing(tmp_path: Path) -> None:
+    seed_fixture_tree(tmp_path)
+    funding_dir = tmp_path / "futures" / "um" / "monthly" / "fundingRate" / "BTCUSDT"
+    for path in funding_dir.glob("*.zip"):
+        path.unlink()
+
+    frame = build_market_frame(tmp_path)
+
+    assert (frame["funding_interval_hours"] == 8).all()
+    assert (frame["funding_rate"] == 0.0).all()

@@ -120,6 +120,25 @@ def build_download_plan(
     for dataset in datasets:
         for month_start in iter_month_starts(start_date, end_date):
             month_end = month_last_day(month_start)
+            if dataset == "fundingRate":
+                if monthly_available(month_start, as_of):
+                    token = month_start.strftime("%Y-%m")
+                    remote_path = build_remote_path(dataset, "monthly", token, symbol, interval, checksum=False)
+                    checksum_path = build_remote_path(dataset, "monthly", token, symbol, interval, checksum=True)
+                    local_zip = root / remote_path.replace("data/", "", 1)
+                    local_checksum = root / checksum_path.replace("data/", "", 1)
+                    items.append(
+                        DownloadItem(
+                            dataset=dataset,
+                            period_kind="monthly",
+                            token=token,
+                            remote_path=remote_path,
+                            local_zip=local_zip,
+                            local_checksum=local_checksum,
+                        )
+                    )
+                continue
+
             full_month_requested = start_date <= month_start and month_end <= end_date
             if full_month_requested and monthly_available(month_start, as_of):
                 token = month_start.strftime("%Y-%m")
@@ -248,4 +267,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
