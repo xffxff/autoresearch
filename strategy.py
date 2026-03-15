@@ -33,9 +33,9 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             target = 0.2
             if row["trend_regime"] >= 0.018:
                 target = 0.35
-            if row["trend_regime"] >= 0.025:
+            if row["trend_regime"] >= 0.027:
                 target = 0.55
-            if row["trend_regime"] >= 0.04 and row["basis"] < 0.0015:
+            if row["trend_regime"] >= 0.042 and row["basis"] < 0.0015:
                 target = 0.75
 
             vol_target = min(1.0, max(0.25, 0.16 / max(row["volatility_14d"], 0.003)))
