@@ -23,7 +23,6 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["trend_slope"] > -0.005
             and row["funding_latest"] < 0.00065
             and row["premium_7d"] >= -0.00015
-            and row["breakout_60d"] > -0.10
         )
         breakout_reentry = (
             row["breakout_20d"] > -0.012
@@ -58,7 +57,6 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             row["trend_regime"] < 0.006
             or row["trend_slope"] < -0.013
             or row["funding_latest"] > 0.0009
-            or row["breakout_60d"] < -0.12
         ):
             if target > 0.0:
                 target = 0.0
