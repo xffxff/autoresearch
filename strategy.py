@@ -8,6 +8,7 @@ from backtest import MarketBundle
 def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series:
     positions: list[float] = []
     cooldown_hours = 73
+    funding_cap = 0.0006
     state = 0.0
     hours_since_change = cooldown_hours
     hours_since_rebalance = cooldown_hours
@@ -20,13 +21,13 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         slow_trend_ready = (
             row["trend_regime"] >= 0.009
             and row["trend_slope"] > -0.005
-            and row["funding_latest"] < 0.00065
+            and row["funding_latest"] < funding_cap
             and row["premium_7d"] >= -0.00015
         )
         breakout_reentry = (
             row["breakout_20d"] > -0.012
             and row["trend_slope"] > -0.003
-            and row["funding_latest"] < 0.00055
+            and row["funding_latest"] < funding_cap
             and row["trend_regime_7d"] > 0.007
         )
 
