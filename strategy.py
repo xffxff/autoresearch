@@ -13,6 +13,8 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
     partial_size = 0.25
     stretched_trend_cap = 0.20
     volatility_cap = 0.006
+    continuation_regime_floor = 0.01
+    continuation_breakout_floor = -0.005
     state = 0.0
     hours_since_change = cooldown_hours
 
@@ -33,12 +35,14 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["trend_regime_7d"] > 0.007
         )
 
-        filters_ready = (
-            row["return_3d"] > -0.05
-            and row["drawdown_7d"] > -0.08
-            and row["volatility_14d"] < volatility_cap
+        base_filters_ready = row["return_3d"] > -0.05 and row["drawdown_7d"] > -0.08
+        dual_volatility_ready = row["volatility_14d"] < volatility_cap and row["volatility_30d"] < volatility_cap
+        strong_continuation_ready = (
+            row["trend_regime_7d"] > continuation_regime_floor
+            and row["breakout_20d"] > continuation_breakout_floor
             and row["volatility_30d"] < volatility_cap
         )
+        filters_ready = base_filters_ready and (dual_volatility_ready or strong_continuation_ready)
         if filters_ready:
             if slow_trend_ready:
                 target = partial_size if row["trend_regime"] > stretched_trend_cap else 1.0
