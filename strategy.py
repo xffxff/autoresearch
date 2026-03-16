@@ -9,6 +9,8 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
     positions: list[float] = []
     cooldown_hours = 73
     funding_cap = 0.0006
+    partial_premium_floor = -0.0003
+    partial_size = 0.25
     volatility_cap = 0.006
     state = 0.0
     hours_since_change = cooldown_hours
@@ -17,12 +19,12 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         hours_since_change += 1
         target = 0.0
 
-        slow_trend_ready = (
+        slow_trend_precheck = (
             row["trend_regime"] >= 0.009
             and row["trend_slope"] > -0.005
             and row["funding_latest"] < funding_cap
-            and row["premium_7d"] >= -0.00015
         )
+        slow_trend_ready = slow_trend_precheck and row["premium_7d"] >= -0.00015
         breakout_reentry = (
             row["breakout_20d"] > -0.012
             and row["trend_slope"] > -0.003
@@ -30,13 +32,16 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["trend_regime_7d"] > 0.007
         )
 
-        if (
-            (slow_trend_ready or breakout_reentry)
-            and row["return_3d"] > -0.05
+        filters_ready = (
+            row["return_3d"] > -0.05
             and row["drawdown_7d"] > -0.08
             and row["volatility_30d"] < volatility_cap
-        ):
-            target = 1.0
+        )
+        if filters_ready:
+            if slow_trend_ready or breakout_reentry:
+                target = 1.0
+            elif slow_trend_precheck and row["premium_7d"] >= partial_premium_floor:
+                target = partial_size
 
         if row["trend_slope"] < -0.01 or row["funding_latest"] > 0.0009:
             if target > 0.0:
