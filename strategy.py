@@ -9,13 +9,12 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
     positions: list[float] = []
     cooldown_hours = 73
     funding_cap = 0.0006
+    volatility_cap = 0.006
     state = 0.0
     hours_since_change = cooldown_hours
-    hours_since_rebalance = cooldown_hours
 
     for _, row in features.iterrows():
         hours_since_change += 1
-        hours_since_rebalance += 1
         target = 0.0
 
         slow_trend_ready = (
@@ -35,10 +34,9 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             (slow_trend_ready or breakout_reentry)
             and row["return_3d"] > -0.05
             and row["drawdown_7d"] > -0.08
+            and row["volatility_30d"] < volatility_cap
         ):
             target = 1.0
-            vol_target = min(1.0, max(0.35, 0.22 / max(row["volatility_14d"], 0.003)))
-            target = min(target, vol_target)
 
         if row["trend_slope"] < -0.01 or row["funding_latest"] > 0.0009:
             if target > 0.0:
@@ -48,15 +46,10 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             if target != 0.0 and hours_since_change >= cooldown_hours:
                 state = target
                 hours_since_change = 0
-                hours_since_rebalance = 0
         else:
             if target == 0.0 and hours_since_change >= cooldown_hours:
                 state = 0.0
                 hours_since_change = 0
-                hours_since_rebalance = 0
-            elif target != 0.0 and abs(target - state) > 0.05 and hours_since_rebalance >= cooldown_hours:
-                state = target
-                hours_since_rebalance = 0
 
         positions.append(state)
 

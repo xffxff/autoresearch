@@ -18,6 +18,7 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
     trend_regime = (ema_fast / ema_slow - 1.0).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     trend_slope = ema_fast.pct_change(24 * 3).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     volatility_14d = returns_1h.rolling(24 * 14, min_periods=24 * 3).std().fillna(0.0)
+    volatility_30d = returns_1h.rolling(24 * 30, min_periods=24 * 3).std().fillna(0.0)
     funding_latest = frame["funding_rate"].replace(0.0, np.nan).ffill().fillna(0.0)
     basis = (frame["mark_close"] / frame["index_close"] - 1.0).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     premium_7d = frame["premium_close"].rolling(24 * 7, min_periods=24).mean().fillna(0.0)
@@ -36,6 +37,7 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
             "trend_regime": trend_regime,
             "trend_slope": trend_slope,
             "volatility_14d": volatility_14d,
+            "volatility_30d": volatility_30d,
             "funding_latest": funding_latest,
             "basis": basis,
             "premium_7d": premium_7d,
