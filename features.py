@@ -24,6 +24,7 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
     breakout_20d = (
         close / close.rolling(24 * 20, min_periods=24 * 5).max() - 1.0
     ).replace([np.inf, -np.inf], 0.0).fillna(-1.0)
+    return_3d = close.pct_change(24 * 3).replace([np.inf, -np.inf], 0.0).fillna(0.0)
 
     features = pd.DataFrame(
         {
@@ -36,6 +37,7 @@ def build_features(market: MarketBundle) -> pd.DataFrame:
             "basis": basis,
             "premium_7d": premium_7d,
             "breakout_20d": breakout_20d,
+            "return_3d": return_3d,
         },
         index=frame.index,
     )
