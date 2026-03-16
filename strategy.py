@@ -11,6 +11,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
     funding_cap = 0.0006
     partial_premium_floor = -0.0003
     partial_size = 0.25
+    stretched_trend_cap = 0.20
     volatility_cap = 0.006
     state = 0.0
     hours_since_change = cooldown_hours
@@ -38,7 +39,9 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["volatility_30d"] < volatility_cap
         )
         if filters_ready:
-            if slow_trend_ready or breakout_reentry:
+            if slow_trend_ready:
+                target = partial_size if row["trend_regime"] > stretched_trend_cap else 1.0
+            elif breakout_reentry:
                 target = 1.0
             elif slow_trend_precheck and row["premium_7d"] >= partial_premium_floor:
                 target = partial_size
