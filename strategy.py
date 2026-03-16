@@ -30,7 +30,11 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
             and row["trend_regime_7d"] > 0.007
         )
 
-        if (slow_trend_ready or breakout_reentry) and row["return_3d"] > -0.05:
+        if (
+            (slow_trend_ready or breakout_reentry)
+            and row["return_3d"] > -0.05
+            and row["drawdown_7d"] > -0.08
+        ):
             target = 1.0
             vol_target = min(1.0, max(0.35, 0.22 / max(row["volatility_14d"], 0.003)))
             target = min(target, vol_target)
