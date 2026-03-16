@@ -36,6 +36,7 @@ def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series
         filters_ready = (
             row["return_3d"] > -0.05
             and row["drawdown_7d"] > -0.08
+            and row["volatility_14d"] < volatility_cap
             and row["volatility_30d"] < volatility_cap
         )
         if filters_ready:
