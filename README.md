@@ -62,6 +62,31 @@ uv run run_experiment.py --run-holdout --description final-check
 
 If those commands work, the setup is ready for autonomous research.
 
+## Hyperliquid paper trading
+
+This repo now also includes a separate Hyperliquid mainnet paper-trading path for approved strategy snapshots.
+
+- Paper trading is read-only and uses the official `hyperliquid-python-sdk` via `Info` only.
+- The live paper runner does not read root `features.py` / `strategy.py` directly. You must first snapshot and approve them.
+- Paper sizing is fixed at `10000 USDC` notional, non-compounding, with pure taker execution.
+- Paper artifacts are written to `paper_artifacts/` and are intentionally separate from `results.tsv`.
+- Paper implementation lives under the `paper_trading/` package; root scripts are thin CLI entrypoints.
+
+Typical workflow:
+
+```bash
+# 1. Manually approve the current research snapshot for paper trading
+uv run approve_paper.py --approved-by <name> --description "paper candidate"
+
+# 2. Run one paper-trading tick on Hyperliquid mainnet
+uv run run_paper.py
+
+# 3. Or keep polling continuously
+uv run run_paper.py --loop --poll-interval-seconds 30
+```
+
+See `paper_trading.md` for implementation details and guardrails.
+
 ## Running the agent
 
 Open your coding agent in this repository and point it at `program.md`. A typical prompt is:
@@ -81,6 +106,11 @@ backtest.py        fixed evaluator, execution model, and gates (do not modify)
 run_experiment.py  fixed experiment runner and results logger (do not modify)
 features.py        feature engineering surface (agent modifies this)
 strategy.py        position logic surface (agent modifies this)
+approve_paper.py   snapshot + approval flow for paper trading
+run_paper.py       Hyperliquid mainnet paper runner
+paper_trading/     modular Hyperliquid paper-trading package
+deployments/paper/ approved paper strategy snapshots
+paper_artifacts/   paper decisions, fills, equity, and runtime state
 program.md         human instructions for the agent
 pyproject.toml     dependencies
 results.tsv        research experiment log
