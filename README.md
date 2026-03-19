@@ -83,6 +83,9 @@ uv run run_paper.py
 
 # 3. Or keep polling continuously
 uv run run_paper.py --loop --poll-interval-seconds 30
+
+# 4. Open the local paper-trading dashboard
+uv run run_paper_dashboard.py --open-browser
 ```
 
 See `paper_trading.md` for implementation details and guardrails.
@@ -108,6 +111,7 @@ features.py        feature engineering surface (agent modifies this)
 strategy.py        position logic surface (agent modifies this)
 approve_paper.py   snapshot + approval flow for paper trading
 run_paper.py       Hyperliquid mainnet paper runner
+run_paper_dashboard.py local dashboard for paper-trading artifacts
 paper_trading/     modular Hyperliquid paper-trading package
 deployments/paper/ approved paper strategy snapshots
 paper_artifacts/   paper decisions, fills, equity, and runtime state

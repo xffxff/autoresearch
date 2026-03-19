@@ -32,6 +32,12 @@ Run continuously:
 uv run run_paper.py --loop --poll-interval-seconds 30
 ```
 
+Open the local dashboard:
+
+```bash
+uv run run_paper_dashboard.py --open-browser
+```
+
 The runner:
 
 - loads the approved paper snapshot
@@ -54,6 +60,8 @@ Create `paper_artifacts/HALT` to stop future paper actions without changing the 
 - `equity.tsv`
 - `risk_events.tsv`
 - `daily/<YYYY-MM-DD>.json`
+
+The dashboard reads those files directly and serves a local UI on `http://127.0.0.1:8765` by default.
 
 These artifacts are intentionally separate from offline research outputs like `results.tsv` and `artifacts/latest_summary.json`.
 
