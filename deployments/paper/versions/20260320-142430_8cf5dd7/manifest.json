@@ -1,10 +1,10 @@
 {
-  "version_id": "20260318-154926_d38849f",
-  "approved_at": "2026-03-18T15:49:26.108068+00:00",
+  "version_id": "20260320-142430_8cf5dd7",
+  "approved_at": "2026-03-20T14:24:30.593247+00:00",
   "approved_by": "fan",
-  "source_commit": "d38849f",
+  "source_commit": "8cf5dd7",
   "source_research_scheme": "research_holdout_v2_8windows",
-  "source_description": "initial hyperliquid paper v1 snapshot",
+  "source_description": "paper dashboard signal diagnostics",
   "paper_scheme": "hyperliquid_mainnet_paper_v1",
   "symbol": "BTC",
   "bar_interval": "1h",
@@ -13,5 +13,5 @@
   "taker_fee_bps": 5.0,
   "extra_slippage_bps": 1.0,
   "features_sha256": "668de9d708458c7658f4c000fe8255883e4d7344a4758e908bba28be7658e292",
-  "strategy_sha256": "904e55bd6d6121f5e518224f857d2cf54f3786b77ad163184ec68481e0948b21"
+  "strategy_sha256": "d2cdb2607d203327f367d204908c8bb1ea37ab27277276845101a389c6e420f7"
 }
