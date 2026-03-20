@@ -480,6 +480,88 @@
         gap: 8px;
       }
 
+      .signal-hero {
+        gap: 14px;
+        padding: 18px;
+        border-radius: 20px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.46)),
+          rgba(255, 255, 255, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+      }
+
+      .signal-headline {
+        font-size: 1.75rem;
+        line-height: 1.02;
+      }
+
+      .signal-summary {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .signal-columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .signal-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .signal-item {
+        padding: 14px 15px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.52);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+      }
+
+      .signal-item strong {
+        display: block;
+        font-size: 0.98rem;
+      }
+
+      .signal-item span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+
+      .signal-metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .signal-metric-card {
+        padding: 14px 15px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.54);
+        border: 1px solid rgba(255, 255, 255, 0.68);
+      }
+
+      .signal-metric-card .label-lite {
+        display: block;
+      }
+
+      .signal-metric-card .value-strong {
+        margin-top: 8px;
+      }
+
+      .table-note {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
       .empty-state {
         padding: 28px;
         text-align: center;
@@ -489,7 +571,8 @@
       @media (max-width: 1100px) {
         .hero,
         .split-grid,
-        .activity-grid {
+        .activity-grid,
+        .signal-columns {
           grid-template-columns: 1fr;
         }
 
@@ -512,7 +595,8 @@
         }
 
         .kpi-grid,
-        .chart-foot {
+        .chart-foot,
+        .signal-metric-grid {
           grid-template-columns: 1fr;
         }
 
@@ -538,7 +622,8 @@
           <h1>Paper Trading Desk</h1>
           <p class="lede">
             Track approved deployment metadata, exposure, PnL, execution history,
-            and risk signals from the artifacts already written by the paper runner.
+            and strategy diagnostics so the dashboard explains why the runner traded,
+            held flat, or stayed in cooldown.
           </p>
         </div>
         <div class="hero-meta">
@@ -577,6 +662,51 @@
           <div class="metric-label">Trade Activity</div>
           <div id="activity-value" class="metric-value">-</div>
           <div id="activity-detail" class="metric-detail">No decisions yet</div>
+        </article>
+      </section>
+
+      <section class="split-grid">
+        <article class="panel stack-panel" data-reveal="3">
+          <div class="section-head">
+            <div>
+              <h2>Signal State</h2>
+              <div class="section-copy">
+                Current strategy path, satisfied gates, and blockers behind the latest
+                processed paper decision.
+              </div>
+            </div>
+          </div>
+          <div class="signal-hero">
+            <div id="signal-status-row" class="chip-row"></div>
+            <h3 id="signal-headline" class="signal-headline">Signal diagnostics unavailable</h3>
+            <div id="signal-summary" class="signal-summary">
+              Approve a snapshot with signal diagnostics to explain the latest bar.
+            </div>
+          </div>
+          <div class="signal-columns">
+            <div>
+              <div class="label-lite">Satisfied Now</div>
+              <div id="signal-support-list" class="signal-list"></div>
+            </div>
+            <div>
+              <div class="label-lite">Blocking Now</div>
+              <div id="signal-block-list" class="signal-list"></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel stack-panel" data-reveal="3">
+          <div class="section-head">
+            <div>
+              <h2>Signal Snapshot</h2>
+              <div class="section-copy">
+                Position state, target state, cooldown, and raw feature levels behind the
+                current signal explanation.
+              </div>
+            </div>
+          </div>
+          <div id="signal-state-kv" class="kv-list"></div>
+          <div id="signal-metrics" class="signal-metric-grid"></div>
         </article>
       </section>
 
@@ -760,6 +890,38 @@
 
       function makeBadge(label, tone) {
         return `<span class="badge ${tone}">${escapeHtml(label)}</span>`;
+      }
+
+      function renderConditionList(items, emptyMessage, tone) {
+        if (!items || !items.length) {
+          return `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
+        }
+        return items
+          .map(
+            (item) => `
+              <article class="signal-item">
+                <strong class="${tone}">${escapeHtml(item.label || "-")}</strong>
+                <span>${escapeHtml(item.detail || "")}</span>
+              </article>
+            `
+          )
+          .join("");
+      }
+
+      function renderSignalStoryCompact(story) {
+        if (!story) {
+          return `<span class="mono">No signal diagnostics</span>`;
+        }
+        const blockers = (story.blocking_conditions || [])
+          .slice(0, 2)
+          .map((item) => item.label)
+          .join(" · ");
+        const suffix = blockers ? `<span class="table-note">Blocks: ${escapeHtml(blockers)}</span>` : "";
+        return `
+          <strong>${escapeHtml(story.headline || "-")}</strong>
+          <span class="table-note">${escapeHtml(story.summary || "-")}</span>
+          ${suffix}
+        `;
       }
 
       function buildTable(rows, columns, emptyMessage) {
@@ -950,6 +1112,101 @@
           .join("");
       }
 
+      function renderSignal(payload) {
+        const signalState = payload.signal_state || {};
+        const latest = signalState.latest;
+        const statusRow = document.getElementById("signal-status-row");
+        const headline = document.getElementById("signal-headline");
+        const summary = document.getElementById("signal-summary");
+        const stateKv = document.getElementById("signal-state-kv");
+        const metrics = document.getElementById("signal-metrics");
+
+        if (!signalState.available || !latest) {
+          statusRow.innerHTML = makeBadge("Unavailable", "tone-warn");
+          headline.textContent = "Signal diagnostics unavailable";
+          summary.textContent =
+            signalState.message || "The approved snapshot does not expose signal diagnostics yet.";
+          document.getElementById("signal-support-list").innerHTML = renderConditionList(
+            [],
+            "No signal diagnostics available.",
+            "text-ok"
+          );
+          document.getElementById("signal-block-list").innerHTML = renderConditionList(
+            [],
+            "No signal diagnostics available.",
+            "text-bad"
+          );
+          stateKv.innerHTML = `
+            <div class="kv-row">
+              <div class="kv-key">Status</div>
+              <div class="kv-value">Unavailable</div>
+            </div>
+          `;
+          metrics.innerHTML = `<div class="empty-state">No live signal metrics to show.</div>`;
+          return;
+        }
+
+        const tone =
+          latest.transition === "enter_long" || latest.transition === "exit_long"
+            ? "tone-ok"
+            : latest.blocking_conditions && latest.blocking_conditions.length
+              ? "tone-warn"
+              : "tone-info";
+        statusRow.innerHTML = [
+          makeBadge(latest.headline || "Signal", tone),
+          makeBadge(latest.path_label || "Path", "tone-neutral"),
+          makeBadge(`State ${formatNumber(latest.state_before)} -> ${formatNumber(latest.effective_position)}`, "tone-info"),
+        ].join("");
+        headline.textContent = latest.headline || "Signal";
+        summary.textContent = latest.summary || "-";
+
+        document.getElementById("signal-support-list").innerHTML = renderConditionList(
+          latest.supporting_conditions || [],
+          "No gates are actively passing.",
+          "text-ok"
+        );
+        document.getElementById("signal-block-list").innerHTML = renderConditionList(
+          latest.blocking_conditions || [],
+          "No blockers are active on the latest bar.",
+          "text-bad"
+        );
+
+        const rows = [
+          ["Signal path", latest.path_label || "-"],
+          ["Position before", formatNumber(latest.state_before)],
+          ["Candidate target", formatNumber(latest.candidate_target)],
+          ["Effective position", formatNumber(latest.effective_position)],
+          [
+            "Cooldown remaining",
+            latest.cooldown_hours_remaining ? `${latest.cooldown_hours_remaining}h` : "0h",
+          ],
+        ];
+        stateKv.innerHTML = rows
+          .map(
+            ([key, value]) => `
+              <div class="kv-row">
+                <div class="kv-key">${escapeHtml(key)}</div>
+                <div class="kv-value">${escapeHtml(value)}</div>
+              </div>
+            `
+          )
+          .join("");
+
+        const metricRows = latest.metrics || [];
+        metrics.innerHTML = metricRows.length
+          ? metricRows
+              .map(
+                (item) => `
+                  <article class="signal-metric-card">
+                    <span class="label-lite">${escapeHtml(item.label || "-")}</span>
+                    <div class="value-strong">${escapeHtml(item.value || "-")}</div>
+                  </article>
+                `
+              )
+              .join("")
+          : `<div class="empty-state">No raw signal metrics were provided.</div>`;
+      }
+
       function renderTables(payload) {
         const decisionRows = (payload.recent_decisions || []).slice(0, 10);
         const fillRows = (payload.recent_fills || []).slice(0, 10);
@@ -967,16 +1224,24 @@
               render: (row) => makeBadge(row.action || row.status || "-", toneClass(row.status)),
             },
             {
-              label: "Delta Qty",
-              render: (row) => escapeHtml(formatNumber(row.delta_qty)),
+              label: "Target",
+              render: (row) => escapeHtml(formatNumber(row.target_position)),
             },
             {
-              label: "Open Px",
-              render: (row) => escapeHtml(formatMoney(row.open_price)),
+              label: "Signal",
+              render: (row) =>
+                row.signal_story
+                  ? `${makeBadge(row.signal_story.path_label || "-", "tone-neutral")}${renderSignalStoryCompact(
+                      row.signal_story
+                    )}`
+                  : `<span class="mono">${escapeHtml(row.reason || "-")}</span>`,
             },
             {
-              label: "Reason",
-              render: (row) => escapeHtml(row.reason || "-"),
+              label: "Execution",
+              render: (row) =>
+                `<strong>${escapeHtml(formatNumber(row.delta_qty))}</strong><span class="table-note">Open ${escapeHtml(
+                  formatMoney(row.open_price)
+                )} · Reason ${escapeHtml(row.reason || "-")}</span>`,
             },
           ],
           "No decisions written yet."
@@ -1117,6 +1382,7 @@
         }
         const payload = await response.json();
         renderKpis(payload);
+        renderSignal(payload);
         renderDeployment(payload);
         renderTables(payload);
         renderDailyReports(payload.daily_reports || []);

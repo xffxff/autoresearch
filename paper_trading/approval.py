@@ -87,9 +87,9 @@ def _load_module(module_path: Path, module_name: str) -> ModuleType:
     return module
 
 
-def load_approved_builders(
+def load_approved_modules(
     deployment_root: Path, config: PaperConfig
-) -> tuple[ApprovalManifest, FeatureBuilder, StrategyBuilder]:
+) -> tuple[ApprovalManifest, ModuleType, ModuleType]:
     current = load_current_deployment(deployment_root)
     version_dir = deployment_root / "versions" / current.version_id
     manifest = load_manifest(version_dir)
@@ -100,6 +100,15 @@ def load_approved_builders(
     )
     strategy_module = _load_module(
         version_dir / "strategy.py", f"paper_strategy_{manifest.version_id}"
+    )
+    return manifest, features_module, strategy_module
+
+
+def load_approved_builders(
+    deployment_root: Path, config: PaperConfig
+) -> tuple[ApprovalManifest, FeatureBuilder, StrategyBuilder]:
+    manifest, features_module, strategy_module = load_approved_modules(
+        deployment_root, config
     )
     feature_builder = getattr(features_module, "build_features", None)
     strategy_builder = getattr(strategy_module, "generate_position", None)

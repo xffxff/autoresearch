@@ -30,6 +30,30 @@ import pandas as pd
 from backtest import MarketBundle
 
 
+def describe_signal(features: pd.DataFrame, market: MarketBundle) -> pd.DataFrame:
+    del market
+    return pd.DataFrame(
+        {
+            "bar_close_time": [timestamp.isoformat() for timestamp in features.index],
+            "state_before": [0.0] * len(features.index),
+            "effective_position": [1.0] * len(features.index),
+            "candidate_target": [1.0] * len(features.index),
+            "signal_target": [1.0] * len(features.index),
+            "cooldown_ready": [True] * len(features.index),
+            "cooldown_hours_remaining": [0] * len(features.index),
+            "trade_intent": [True] * len(features.index),
+            "transition": ["enter_long"] * len(features.index),
+            "signal_path": ["test_long"] * len(features.index),
+            "volatility_ready": [True] * len(features.index),
+            "slow_trend_ready": [True] * len(features.index),
+            "breakout_reentry": [False] * len(features.index),
+            "partial_ready": [True] * len(features.index),
+            "hard_block": [False] * len(features.index),
+        },
+        index=features.index,
+    )
+
+
 def generate_position(features: pd.DataFrame, market: MarketBundle) -> pd.Series:
     return pd.Series(1.0, index=features.index, name="position")
 """

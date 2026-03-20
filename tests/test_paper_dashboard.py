@@ -27,6 +27,31 @@ from paper_trading.types import (
 from tests.paper_helpers import write_approved_snapshot
 
 
+def stub_signal_payload(*args, **kwargs) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    del args
+    del kwargs
+    story = {
+        "headline": "Long entry fired",
+        "summary": "Traded because the long path passed and no blocker cancelled the setup.",
+        "path_label": "Test long signal",
+        "transition": "enter_long",
+        "state_before": 0.0,
+        "effective_position": 1.0,
+        "candidate_target": 1.0,
+        "cooldown_hours_remaining": 0,
+        "supporting_conditions": [
+            {"label": "Volatility gate", "passed": True, "detail": "Passed."}
+        ],
+        "blocking_conditions": [],
+        "metrics": [{"label": "Signal", "value": "1.00"}],
+    }
+    return {
+        "available": True,
+        "message": None,
+        "latest": story,
+    }, {"2026-03-19T13:00:00+00:00": story}
+
+
 def write_dashboard_fixture(tmp_path: Path) -> tuple[Path, Path]:
     deployment_root = tmp_path / "deployments" / "paper"
     artifacts_dir = tmp_path / "paper_artifacts"
@@ -112,8 +137,11 @@ def write_dashboard_fixture(tmp_path: Path) -> tuple[Path, Path]:
     return artifacts_dir, deployment_root
 
 
-def test_load_dashboard_payload_aggregates_latest_artifacts(tmp_path: Path) -> None:
+def test_load_dashboard_payload_aggregates_latest_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifacts_dir, deployment_root = write_dashboard_fixture(tmp_path)
+    monkeypatch.setattr("paper_trading.dashboard._load_signal_payload", stub_signal_payload)
 
     payload = load_dashboard_payload(artifacts_dir, deployment_root)
 
@@ -126,11 +154,16 @@ def test_load_dashboard_payload_aggregates_latest_artifacts(tmp_path: Path) -> N
     assert payload["stats"]["risk_event_count"] == 1
     assert payload["equity_points"][0]["net_pnl_usdc"] == pytest.approx(135.0)
     assert payload["recent_decisions"][0]["action"] == "buy"
+    assert payload["signal_state"]["available"] is True
+    assert payload["recent_decisions"][0]["signal_story"]["headline"] == "Long entry fired"
     assert payload["files"]["decisions"]["row_count"] == 1
 
 
-def test_dashboard_app_routes_html_and_json(tmp_path: Path) -> None:
+def test_dashboard_app_routes_html_and_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     artifacts_dir, deployment_root = write_dashboard_fixture(tmp_path)
+    monkeypatch.setattr("paper_trading.dashboard._load_signal_payload", stub_signal_payload)
     app = DashboardApp(
         artifacts_dir=artifacts_dir,
         deployment_root=deployment_root,

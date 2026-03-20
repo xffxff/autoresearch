@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import replace
 import json
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -12,7 +13,13 @@ from typing import Any
 from urllib.parse import urlparse
 import webbrowser
 
+import pandas as pd
+
+from paper_trading.approval import load_approved_modules
 from paper_trading.config import default_config
+from paper_trading.frame import build_market_frame, ensure_warmup
+from paper_trading.market_data import HyperliquidMarketData
+from paper_trading.signals import make_market_bundle
 
 
 FLOAT_FIELDS = {
@@ -39,6 +46,249 @@ FLOAT_FIELDS = {
 }
 
 HTML_TEMPLATE_PATH = Path(__file__).parent / "static" / "paper_dashboard.html"
+
+SIGNAL_PATH_LABELS = {
+    "slow_trend_full": "Slow trend full-size long",
+    "slow_trend_stretched_partial": "Slow trend partial long",
+    "breakout_reentry": "Breakout re-entry long",
+    "slow_trend_partial": "Premium-limited partial long",
+    "hard_blocked": "Risk override cancelled the long",
+    "volatility_blocked": "Volatility gate blocked entry",
+    "volatility_ready_no_entry": "Volatility passed but no entry path fired",
+    "flat_no_entry": "No entry path fired",
+    "test_long": "Test long signal",
+}
+
+STRATEGY_DETAIL_FIELDS = {
+    "trend_regime_7d",
+    "trend_regime",
+    "trend_slope",
+    "volatility_14d",
+    "volatility_30d",
+    "funding_latest",
+    "premium_7d",
+    "breakout_20d",
+}
+
+
+def _bool_flag(value: Any) -> bool:
+    return bool(value)
+
+
+def _format_pct(value: Any, digits: int = 2, empty: str = "-") -> str:
+    if value is None:
+        return empty
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return empty
+    return f"{number * 100:.{digits}f}%"
+
+
+def _signal_path_label(value: Any) -> str:
+    label = str(value or "").strip()
+    if not label:
+        return "Signal path unavailable"
+    return SIGNAL_PATH_LABELS.get(label, label.replace("_", " "))
+
+
+def _condition(label: str, passed: bool, detail: str) -> dict[str, Any]:
+    return {"label": label, "passed": passed, "detail": detail}
+
+
+def _generic_signal_story(signal_row: dict[str, Any]) -> dict[str, Any]:
+    transition = str(signal_row.get("transition") or "unknown")
+    state_before = float(signal_row.get("state_before") or 0.0)
+    effective_position = float(signal_row.get("effective_position") or 0.0)
+    cooldown_remaining = int(signal_row.get("cooldown_hours_remaining") or 0)
+    path_label = _signal_path_label(signal_row.get("signal_path"))
+
+    if transition == "enter_long":
+        headline = "Long entry fired"
+        summary = f"Traded because {path_label.lower()} passed with cooldown clear."
+    elif transition == "exit_long":
+        headline = "Exit to flat fired"
+        summary = "Traded out because the state machine dropped its target to flat."
+    elif transition == "entry_cooldown":
+        headline = "Entry signal is waiting on cooldown"
+        summary = f"A long setup is live, but {cooldown_remaining}h of cooldown remain."
+    elif transition == "exit_cooldown":
+        headline = "Exit signal is waiting on cooldown"
+        summary = f"The strategy wants to flatten, but {cooldown_remaining}h of cooldown remain."
+    elif transition == "hold_long":
+        headline = "Holding current long"
+        summary = "No new trade because the state machine is already long."
+    else:
+        headline = "No trade"
+        summary = "No entry path was active on the latest processed bar."
+
+    blockers: list[dict[str, Any]] = []
+    if transition in {"entry_cooldown", "exit_cooldown"}:
+        blockers.append(
+            _condition(
+                "Cooldown gate",
+                False,
+                f"{cooldown_remaining}h remain before another state change is allowed.",
+            )
+        )
+    elif transition == "hold_long" and state_before != 0.0:
+        blockers.append(
+            _condition(
+                "Already in position",
+                False,
+                "This state machine only exits on a zero target and does not resize between non-zero targets.",
+            )
+        )
+
+    return {
+        "headline": headline,
+        "summary": summary,
+        "path_label": path_label,
+        "transition": transition,
+        "state_before": state_before,
+        "effective_position": effective_position,
+        "candidate_target": float(signal_row.get("candidate_target") or 0.0),
+        "cooldown_hours_remaining": cooldown_remaining,
+        "supporting_conditions": [],
+        "blocking_conditions": blockers,
+        "metrics": [],
+    }
+
+
+def _detailed_signal_story(signal_row: dict[str, Any]) -> dict[str, Any]:
+    transition = str(signal_row.get("transition") or "unknown")
+    path_label = _signal_path_label(signal_row.get("signal_path"))
+    signal_target = float(signal_row.get("signal_target") or 0.0)
+    candidate_target = float(signal_row.get("candidate_target") or 0.0)
+    cooldown_ready = _bool_flag(signal_row.get("cooldown_ready"))
+    cooldown_remaining = int(signal_row.get("cooldown_hours_remaining") or 0)
+    hard_block = _bool_flag(signal_row.get("hard_block"))
+    state_before = float(signal_row.get("state_before") or 0.0)
+    effective_position = float(signal_row.get("effective_position") or 0.0)
+    trade_intent = _bool_flag(signal_row.get("trade_intent"))
+
+    passes = [
+        _condition(
+            "Volatility gate",
+            _bool_flag(signal_row.get("volatility_ready")),
+            (
+                f"14d {_format_pct(signal_row.get('volatility_14d'))}, "
+                f"30d {_format_pct(signal_row.get('volatility_30d'))}, cap 0.60%."
+            ),
+        ),
+        _condition(
+            "Slow trend entry",
+            _bool_flag(signal_row.get("slow_trend_ready")),
+            (
+                f"Trend {_format_pct(signal_row.get('trend_regime'))} vs >= 0.90%, "
+                f"slope {_format_pct(signal_row.get('trend_slope'))} vs > -0.50%, "
+                f"premium {_format_pct(signal_row.get('premium_7d'), 3)} vs >= -0.015%."
+            ),
+        ),
+        _condition(
+            "Breakout re-entry",
+            _bool_flag(signal_row.get("breakout_reentry")),
+            (
+                f"20d breakout {_format_pct(signal_row.get('breakout_20d'))} vs > -1.20%, "
+                f"7d regime {_format_pct(signal_row.get('trend_regime_7d'))} vs > 0.70%."
+            ),
+        ),
+        _condition(
+            "Partial fallback",
+            _bool_flag(signal_row.get("partial_ready")),
+            (
+                f"Premium {_format_pct(signal_row.get('premium_7d'), 3)} vs >= -0.030% "
+                "with trend precheck still passing."
+            ),
+        ),
+        _condition(
+            "Risk override clear",
+            not hard_block,
+            (
+                f"Funding {_format_pct(signal_row.get('funding_latest'), 3)} vs < 0.090%, "
+                f"slope {_format_pct(signal_row.get('trend_slope'))} vs >= -1.00%."
+            ),
+        ),
+    ]
+
+    if trade_intent or transition in {"entry_cooldown", "exit_cooldown"}:
+        passes.append(
+            _condition(
+                "Cooldown gate",
+                cooldown_ready,
+                (
+                    "73h state-change cooldown is clear."
+                    if cooldown_ready
+                    else f"{cooldown_remaining}h remain before another state change."
+                ),
+            )
+        )
+
+    supporting_conditions = [item for item in passes if item["passed"]]
+    blocking_conditions = [item for item in passes if not item["passed"]]
+
+    if transition == "enter_long":
+        headline = "Long entry fired"
+        summary = f"Traded because {path_label.lower()} passed and no guardrail cancelled the setup."
+    elif transition == "exit_long":
+        headline = "Exit to flat fired"
+        summary = "Traded out because the strategy target fell to flat and cooldown was already satisfied."
+    elif transition == "entry_cooldown":
+        headline = "Long setup is waiting on cooldown"
+        summary = f"{path_label} is active, but {cooldown_remaining}h of cooldown remain before entry."
+    elif transition == "exit_cooldown":
+        headline = "Exit setup is waiting on cooldown"
+        summary = f"The strategy wants to flatten, but {cooldown_remaining}h of cooldown remain."
+    elif transition == "hold_long" and candidate_target != 0.0:
+        headline = "Holding current long"
+        summary = "No new trade because the strategy is already long and only exits on a zero target."
+        blocking_conditions.insert(
+            0,
+            _condition(
+                "Already in position",
+                False,
+                "Non-zero to non-zero target changes do not trigger a resize in this state machine.",
+            ),
+        )
+    elif hard_block and signal_target > 0.0:
+        headline = "Risk override cancelled the setup"
+        summary = "A long path lit up, but the hard risk block zeroed the target before execution."
+    else:
+        headline = "No trade"
+        summary = "No entry path reached its threshold on the latest processed bar."
+
+    metrics = [
+        {"label": "Trend regime", "value": _format_pct(signal_row.get("trend_regime"))},
+        {"label": "Trend slope", "value": _format_pct(signal_row.get("trend_slope"))},
+        {"label": "7d regime", "value": _format_pct(signal_row.get("trend_regime_7d"))},
+        {"label": "20d breakout", "value": _format_pct(signal_row.get("breakout_20d"))},
+        {"label": "14d vol", "value": _format_pct(signal_row.get("volatility_14d"))},
+        {"label": "30d vol", "value": _format_pct(signal_row.get("volatility_30d"))},
+        {"label": "Funding", "value": _format_pct(signal_row.get("funding_latest"), 3)},
+        {"label": "7d premium", "value": _format_pct(signal_row.get("premium_7d"), 3)},
+    ]
+
+    return {
+        "headline": headline,
+        "summary": summary,
+        "path_label": path_label,
+        "transition": transition,
+        "state_before": state_before,
+        "effective_position": effective_position,
+        "candidate_target": candidate_target,
+        "cooldown_hours_remaining": cooldown_remaining,
+        "supporting_conditions": supporting_conditions,
+        "blocking_conditions": blocking_conditions,
+        "metrics": metrics,
+    }
+
+
+def _build_signal_story(signal_row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not signal_row:
+        return None
+    if STRATEGY_DETAIL_FIELDS.issubset(signal_row):
+        return _detailed_signal_story(signal_row)
+    return _generic_signal_story(signal_row)
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,6 +395,123 @@ def _position_side(current_qty: float) -> str:
     return "flat"
 
 
+@lru_cache(maxsize=8)
+def _compute_live_signal_rows(
+    deployment_root: str,
+    artifacts_dir: str,
+    version_id: str,
+    latest_bar_close_time: str | None,
+) -> list[dict[str, Any]]:
+    del version_id
+    del latest_bar_close_time
+    config = replace(
+        default_config(),
+        deployment_root=Path(deployment_root),
+        artifacts_dir=Path(artifacts_dir),
+    )
+    manifest, features_module, strategy_module = load_approved_modules(
+        config.deployment_root, config
+    )
+    feature_builder = getattr(features_module, "build_features", None)
+    strategy_builder = getattr(strategy_module, "generate_position", None)
+    signal_describer = getattr(strategy_module, "describe_signal", None)
+    if feature_builder is None or strategy_builder is None:
+        raise AttributeError("approved snapshot is missing build_features or generate_position")
+    if signal_describer is None:
+        raise AttributeError("approved snapshot is missing describe_signal")
+
+    now = pd.Timestamp.now(tz="UTC")
+    market_data = HyperliquidMarketData(
+        symbol=config.symbol,
+        interval=config.bar_interval,
+        base_url=config.base_url,
+    )
+    closed_candles = market_data.bootstrap_candles(
+        config.warmup_bars,
+        max_backfill_bars=config.max_backfill_bars,
+        now=now,
+    )
+    funding = market_data.fetch_funding_history(
+        closed_candles.index.min(), end_time=now
+    )
+    market_frame = build_market_frame(closed_candles, funding=funding)
+    ensure_warmup(market_frame, config.warmup_bars)
+    market = make_market_bundle(
+        market_frame, symbol=manifest.symbol, interval=manifest.bar_interval
+    )
+    features = feature_builder(market)
+    positions = strategy_builder(features, market)
+    diagnostics = signal_describer(features, market).copy()
+    diagnostics["position"] = positions
+    diagnostics["bar_close_time"] = [
+        str(value)
+        for value in diagnostics.get(
+            "bar_close_time",
+            pd.Series(diagnostics.index.map(lambda value: value.isoformat()), index=diagnostics.index),
+        )
+    ]
+    return diagnostics.reset_index(drop=True).to_dict(orient="records")
+
+
+def _load_signal_payload(
+    *,
+    artifacts_dir: Path,
+    deployment_root: Path,
+    current_deployment: dict[str, Any] | None,
+    latest_status: dict[str, Any] | None,
+    decisions: list[dict[str, Any]],
+    max_rows: int,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    version_id = str((current_deployment or {}).get("version_id") or "").strip()
+    latest_bar_close_time = (
+        (latest_status or {}).get("bar_close_time")
+        or (decisions[0].get("bar_close_time") if decisions else None)
+    )
+    if not version_id:
+        return {
+            "available": False,
+            "message": "No approved deployment is active, so signal diagnostics are unavailable.",
+        }, {}
+
+    try:
+        signal_rows = _compute_live_signal_rows(
+            str(deployment_root),
+            str(artifacts_dir),
+            version_id,
+            str(latest_bar_close_time or ""),
+        )
+    except Exception as exc:
+        return {
+            "available": False,
+            "message": f"Signal diagnostics unavailable: {exc}",
+        }, {}
+
+    by_bar_close_time = {
+        str(row.get("bar_close_time")): row for row in signal_rows if row.get("bar_close_time")
+    }
+    latest_row = (
+        by_bar_close_time.get(str(latest_bar_close_time))
+        or (signal_rows[-1] if signal_rows else None)
+    )
+    latest_story = _build_signal_story(latest_row)
+    recent_map: dict[str, dict[str, Any]] = {}
+    for decision in decisions[:max_rows]:
+        signal_row = by_bar_close_time.get(str(decision.get("bar_close_time") or ""))
+        story = _build_signal_story(signal_row)
+        if story is None:
+            continue
+        recent_map[str(decision.get("bar_close_time") or decision.get("decision_time") or "")] = story
+
+    return (
+        {
+            "available": latest_story is not None,
+            "message": None if latest_story is not None else "No signal diagnostics were computed.",
+            "latest": latest_story,
+        },
+        recent_map,
+    )
+
+
 def load_dashboard_payload(
     artifacts_dir: Path,
     deployment_root: Path,
@@ -188,6 +555,22 @@ def load_dashboard_payload(
     )
     equity_points = sorted(_read_tsv(equity_path), key=lambda row: row.get("timestamp") or "")
     daily_reports = _read_daily_reports(daily_dir)
+
+    signal_payload, recent_signal_map = _load_signal_payload(
+        artifacts_dir=artifacts_dir,
+        deployment_root=deployment_root,
+        current_deployment=current_deployment,
+        latest_status=latest_status,
+        decisions=decisions,
+        max_rows=max_rows,
+    )
+    recent_decisions = []
+    for row in decisions[:max_rows]:
+        signal_key = str(row.get("bar_close_time") or row.get("decision_time") or "")
+        enriched = dict(row)
+        if signal_key in recent_signal_map:
+            enriched["signal_story"] = recent_signal_map[signal_key]
+        recent_decisions.append(enriched)
 
     state_source = runtime_state or latest_status or {}
     current_qty = float(state_source.get("current_qty") or 0.0)
@@ -246,7 +629,8 @@ def load_dashboard_payload(
             "daily": _file_meta(daily_dir, row_count=len(daily_reports)),
         },
         "equity_points": equity_points,
-        "recent_decisions": decisions[:max_rows],
+        "signal_state": signal_payload,
+        "recent_decisions": recent_decisions,
         "recent_fills": fills[:max_rows],
         "recent_risk_events": risk_events[:max_rows],
         "daily_reports": daily_reports[:max_rows],
